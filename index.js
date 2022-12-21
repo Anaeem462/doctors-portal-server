@@ -16,9 +16,8 @@ app.use(express.json());
 
 //mongodb configuration
 const url = `mongodb+srv://${process.env.DB_user}:${process.env.DB_password}@cluster0.cu6wtcv.mongodb.net/?retryWrites=true&w=majority`;
-const uri = process.env.DB_URL || url;
 
-const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true, serverApi: ServerApiVersion.v1 });
+const client = new MongoClient(url, { useNewUrlParser: true, useUnifiedTopology: true, serverApi: ServerApiVersion.v1 });
 const database = client.db("doctorsPortal");
 
 //verify user with json token and user localstorage token
@@ -26,11 +25,11 @@ function verifyJwt(req, res, next) {
     const userTokens = req.headers.authorization;
 
     if (!userTokens) {
-        return res.status(401).send("Unauthorized access");
+        return res.status(401).send({ message: "Unauthorized access" });
     }
     jwt.verify(userTokens, process.env.USER_TOKEN, (err, decoded) => {
         if (err) {
-            return res.status(403).send("unauthorized user");
+            return res.status(403).send({ message: "unauthorized user" });
         }
         req.decoded = decoded;
 
@@ -143,7 +142,7 @@ async function run() {
         app.get("/bookings", verifyJwt, async (req, res) => {
             const email = req.decoded.userEmail;
             const date = req.query.date;
-
+            // console.log(email, date);
             const query = { email: email, appointmentDate: date };
             const userBookedData = await bookingsCollection.find(query).toArray();
 
@@ -194,8 +193,15 @@ async function run() {
         //set transaction id
         app.post("/payments", async (req, res) => {
             const payementUser = req.body;
-            const result = await PaymentsCollection.insertOne(payementUser);
-            res.send(result);
+            const bookingId = payementUser.booking_id;
+            const query = { _id: ObjectId(bookingId) };
+            const updatedoc = { $set: { paid: true } };
+            const options = { upsert: true };
+            const bookingResult = await bookingsCollection.updateOne(query, updatedoc, options);
+            if (bookingResult.modifiedCount > 0) {
+                const result = await PaymentsCollection.insertOne(payementUser);
+                res.send(result);
+            }
         });
 
         //get all user data from database
